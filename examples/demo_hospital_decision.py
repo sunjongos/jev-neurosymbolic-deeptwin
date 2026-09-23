@@ -9,9 +9,13 @@ import json
 from pathlib import Path
 
 # Fix cp949 encoding on Windows console
-if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+if sys.platform == "win32" and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+
 
 sys.path.append(str(Path(__file__).resolve().parent.parent / "core"))
 from neurosymbolic_deeptwin import NeurosymbolicDeepTwinEngine
@@ -33,17 +37,18 @@ def run_demo():
     result = engine.evaluate_decision(topic, actions)
 
     print("\n📊 1. JEV Binary Mask Decoupling (M=1, M=0, M=TOO_TOUGH):")
-    for ev in result["scenario_evaluations"]:
+    for ev in result["loop_1_scenario_evaluations"]:
         print(f"  - Action: {ev['action']}")
         print(f"    Mask: {ev['mask']} ({ev['description']}) | Prob: {ev['probability']:.2f}")
         print(f"    Reasoning: {ev['reasoning']}\n")
 
     print("🏆 2. Charlie Munger 3-Basket Classification:")
-    print("  • YES Basket (M=1):", [item['action'] for item in result['munger_baskets']['YES_BASKET_M1']])
-    print("  • NO Basket (M=0):", [item['action'] for item in result['munger_baskets']['NO_BASKET_M0']])
-    print("  • TOO TOUGH / CEO Gate (Ambiguous):", [item['action'] for item in result['munger_baskets']['TOO_TOUGH_CEO_GATE']])
+    print("  • YES Basket (M=1):", [item['action'] for item in result['loop_1_munger_baskets']['YES_BASKET_M1']])
+    print("  • NO Basket (M=0):", [item['action'] for item in result['loop_1_munger_baskets']['NO_BASKET_M0']])
+    print("  • TOO TOUGH / CEO Gate (Ambiguous):", [item['action'] for item in result['loop_1_munger_baskets']['TOO_TOUGH_CEO_GATE']])
 
-    print(f"\n🌟 3. Recommended Action: {result['recommended_action']} (Confidence: {result['confidence']:.2f})")
+    print(f"\n🌟 3. Recommended Action: {result['loop_3_recommended_action']} (Confidence: {result['loop_3_confidence']:.2f})")
+    print(f"📈 4. Final NDB Value Index: {result['loop_5_ndb_index_final']:.4f}")
     print(f"⚡ Total Engine Latency: {result['latency_ms']} ms")
 
 if __name__ == "__main__":
