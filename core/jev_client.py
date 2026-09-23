@@ -271,9 +271,11 @@ class JevClient:
     """TypeSafe JEV System One Decision Client v5.0 (5-Loop World Best)"""
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or TYPESAFE_API_KEY
+        self.api_key = api_key or os.getenv("TYPESAFE_API_KEY", "")
+        self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
         self.endpoint = "https://api.typesafe.ai/v1/systemone"
-        self.openrouter_endpoint = "https://openrouter.ai/api/alpha/decisions"
+        self.openrouter_endpoint = "https://openrouter.ai/api/v1/chat/completions"
         self.audit_log: List[DecisionAuditRecord] = []
 
     def _record_audit(self, decision_type: str, state: str, result: Dict, engine: str, latency: float):
@@ -349,15 +351,32 @@ class JevClient:
                 pass
 
         # Tier 2: OpenRouter Gateway
-        if OPENROUTER_API_KEY:
+        if self.openrouter_api_key:
             try:
-                payload = {"model": "typesafe/jev", "state": state, "questions": questions}
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+                prompt = (
+                    "You are JEV, a System One fast decision AI. "
+                    "Analyze the given STATE and return typed decisions for each QUESTION in JSON format.\n\n"
+                    f"STATE:\n{state}\n\n"
+                    f"QUESTIONS:\n{json.dumps(questions, ensure_ascii=False, indent=2)}\n\n"
+                    "FORMAT REQ (Must output valid JSON ONLY, no markdown):\n"
+                    "For noul: {\"type\": \"noul\", \"decision\": true/false, \"probability\": float_0_to_1, \"reasoning\": \"short string\"}\n"
+                    "For choice: {\"type\": \"choice\", \"selected_option\": \"string\", \"confidence\": float_0_to_1, \"distribution\": {opt: float}}\n"
+                    "For score: {\"type\": \"score\", \"score\": float, \"min\": int, \"max\": int, \"reasoning\": \"short string\"}\n"
+                    "Return a JSON object mapping each question key to its decision output object."
+                )
+                payload = {
+                    "model": "google/gemini-2.5-flash:free",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"}
+                }
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.openrouter_api_key}"}
                 req = urllib.request.Request(self.openrouter_endpoint, data=json.dumps(payload).encode('utf-8'), headers=headers)
                 with urllib.request.urlopen(req, timeout=5) as resp:
-                    data = json.loads(resp.read().decode('utf-8'))
+                    raw_res = json.loads(resp.read().decode('utf-8'))
+                    text = raw_res["choices"][0]["message"]["content"]
+                    data = json.loads(text)
                     data["latency_ms"] = round((time.time() - start_time) * 1000, 2)
-                    data["engine"] = "openrouter_jev"
+                    data["engine"] = "openrouter_jev_api"
                     return data
             except Exception:
                 pass
